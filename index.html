@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NEON PULSE — Audio Visualizer</title>
+<style>
+  :root{
+    --accent:#00f0ff;
+    --accent2:#ff00e0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#04040a}
+  body{font-family:'Segoe UI',system-ui,sans-serif;color:#cfe;user-select:none}
+  body.idle{cursor:none}
+  canvas#cv{position:fixed;inset:0;display:block}
+
+  /* ---- screen FX overlays ---- */
+  #fx{position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,5,.55) 100%)}
+  #fx.scan::after{content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply}
+
+  /* ---- start overlay ---- */
+  #start{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;background:rgba(2,2,10,.92);
+    backdrop-filter:blur(6px);text-align:center;padding:24px}
+  #start h1{font-size:clamp(36px,7vw,84px);font-weight:900;letter-spacing:.12em;
+    background:linear-gradient(90deg,#00f0ff,#ff00e0,#8a2be2,#00f0ff);background-size:300% 100%;
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:hue 6s linear infinite;text-shadow:0 0 60px rgba(0,240,255,.25)}
+  @keyframes hue{to{background-position:300% 0}}
+  #start p{max-width:560px;color:#9ab;line-height:1.5;font-size:14px}
+  #start .note{color:#6fa;font-size:13px}
+  .btn{cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:rgba(0,240,255,.06);
+    padding:14px 34px;font-size:17px;letter-spacing:.08em;border-radius:6px;font-weight:700;
+    transition:.2s;text-transform:uppercase}
+  .btn:hover{background:var(--accent);color:#021;box-shadow:0 0 30px var(--accent)}
+  .btn.alt{border-color:#888;color:#aab;font-size:13px;padding:9px 22px}
+  .btn.alt:hover{background:#aab;color:#111;box-shadow:0 0 18px #889}
+  #btnrow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+
+  /* ---- HUD ---- */
+  .ui{transition:opacity .4s}
+  body.hideui .ui{opacity:0;pointer-events:none}
+  #hud{position:fixed;top:14px;left:18px;z-index:20;font-size:13px;letter-spacing:.1em}
+  #hud b{color:var(--accent);font-size:16px;text-shadow:0 0 12px var(--accent)}
+  #hud span{color:#89a;margin-left:14px}
+  #bpm{color:var(--accent2)!important;font-weight:700}
+
+  #modebar{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:20;display:flex;gap:6px}
+  .mbtn{cursor:pointer;border:1px solid #345;background:rgba(8,12,24,.7);color:#9bc;
+    padding:6px 13px;font-size:12px;border-radius:4px;letter-spacing:.06em}
+  .mbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .mbtn.on{border-color:var(--accent);color:#021;background:var(--accent);
+    box-shadow:0 0 16px var(--accent);font-weight:700}
+
+  #hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:20;
+    font-size:11px;color:#567;letter-spacing:.08em;white-space:nowrap}
+  #hint b{color:#8ad}
+
+  #gear{position:fixed;top:12px;right:16px;z-index:21;cursor:pointer;font-size:22px;
+    color:#9bc;transition:.2s;background:none;border:none}
+  #gear:hover{color:var(--accent);text-shadow:0 0 14px var(--accent)}
+
+  /* ---- settings panel ---- */
+  #panel{position:fixed;top:0;right:-320px;width:300px;height:100%;z-index:30;
+    background:rgba(6,8,18,.95);border-left:1px solid #1a2a4a;padding:18px;
+    transition:right .3s;overflow-y:auto;backdrop-filter:blur(8px)}
+  #panel.open{right:0}
+  #panel h2{font-size:15px;color:var(--accent);letter-spacing:.15em;margin-bottom:14px;
+    text-shadow:0 0 10px var(--accent)}
+  #panel h3{font-size:11px;color:#789;letter-spacing:.2em;margin:16px 0 8px;text-transform:uppercase}
+  .row{display:flex;align-items:center;justify-content:space-between;margin:7px 0;font-size:13px;color:#abd}
+  .row input[type=range]{width:140px;accent-color:var(--accent)}
+  .row select{background:#0a1020;color:#9cf;border:1px solid #234;padding:3px 6px;border-radius:4px}
+  .row input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+  #panel .btn{width:100%;margin-top:14px;font-size:13px;padding:10px}
+
+  #toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:60;
+    background:rgba(10,14,30,.95);border:1px solid var(--accent2);color:#fdf;
+    padding:12px 26px;border-radius:6px;font-size:14px;opacity:0;transition:opacity .3s;
+    pointer-events:none;box-shadow:0 0 24px rgba(255,0,224,.3);max-width:80vw;text-align:center}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="fx" class="scan"></div>
+
+<div id="start">
+  <h1>NEON&nbsp;PULSE</h1>
+  <p>A beat-synced audio visualizer featuring the legendary dance crew:<br>
+  <b style="color:#ffb86b">Artis 🐕</b> · Giedrė · Agnė · Karolina · Emilija · Martynas · Augustas · Ignas · Dovydas · Paulius</p>
+  <div id="btnrow">
+    <button class="btn" id="bCapture">▶ Capture PC Audio</button>
+  </div>
+  <div id="btnrow">
+    <button class="btn alt" id="bMic">🎤 Use Microphone</button>
+    <button class="btn alt" id="bDemo">✨ Demo Mode</button>
+  </div>
+  <p class="note">Capture tip: in the picker choose <b>Entire Screen</b> (or a browser tab) and tick
+  <b>“Also share system audio”</b> — then play music from anywhere on your PC.</p>
+</div>
+
+<div id="hud" class="ui"><b>⚡ NEON PULSE</b><span id="modeName">BARS</span><span id="bpm">— BPM</span><span id="srcName"></span></div>
+<div id="modebar" class="ui"></div>
+<button id="gear" class="ui" title="Settings (C)">⚙</button>
+<div id="hint" class="ui"><b>1–5</b> modes · <b>M</b> cycle · <b>F</b> fullscreen · <b>C</b> settings · <b>D</b> dancers · <b>T</b> theme · <b>H</b> hide UI</div>
+
+<div id="panel">
+  <h2>⚙ CUSTOMIZE</h2>
+  <h3>Visual</h3>
+  <div class="row"><span>Theme</span><select id="sTheme"></select></div>
+  <div class="row"><span>Glow</span><input type="range" id="sGlow" min="0" max="40" step="1"></div>
+  <div class="row"><span>Motion trails</span><input type="range" id="sTrail" min="0" max="0.92" step="0.02"></div>
+  <div class="row"><span>Particles</span><input type="range" id="sPart" min="0" max="400" step="10"></div>
+  <h3>Audio</h3>
+  <div class="row"><span>Sensitivity</span><input type="range" id="sSens" min="0.4" max="3" step="0.05"></div>
+  <h3>Effects</h3>
+  <div class="row"><span>Screen shake</span><input type="checkbox" id="sShake"></div>
+  <div class="row"><span>Beat flash</span><input type="checkbox" id="sFlash"></div>
+  <div class="row"><span>Shockwaves</span><input type="checkbox" id="sWave"></div>
+  <div class="row"><span>Floor grid</span><input type="checkbox" id="sGrid"></div>
+  <div class="row"><span>Scanlines</span><input type="checkbox" id="sScan"></div>
+  <h3>Dance crew</h3>
+  <div class="row"><span>Show dancers</span><input type="checkbox" id="sDance"></div>
+  <div class="row"><span>Dancer size</span><input type="range" id="sSize" min="0.6" max="2" step="0.05"></div>
+  <div class="row"><span>Name tags</span><input type="checkbox" id="sNames"></div>
+  <div class="row"><span>Spotlights</span><input type="checkbox" id="sSpot"></div>
+  <h3>Behaviour</h3>
+  <div class="row"><span>Auto-cycle modes</span><input type="checkbox" id="sAuto"></div>
+  <button class="btn" id="bFull">⛶ Fullscreen</button>
+  <button class="btn alt" id="bReset" style="width:100%">Reset settings</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   NEON PULSE — beat-synced PC audio visualizer with pixel dance crew
+   ===================================================================== */
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let W = 0, H = 0;
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  W = cv.width  = Math.floor(innerWidth  * dpr);
+  H = cv.height = Math.floor(innerHeight * dpr);
+  cv.style.width = innerWidth + "px";
+  cv.style.height = innerHeight + "px";
+}
+addEventListener("resize", resize); resize();
+
+/* ------------------------------- settings ------------------------------- */
+const DEFAULTS = {
+  mode: 0, theme: 0, glow: 18, trail: 0.45, particles: 180, sens: 1.2,
+  shake: true, flash: true, shock: true, grid: true, scan: true,
+  dancers: true, dancerSize: 1.1, names: true, spot: true, autoCycle: false
+};
+let S = { ...DEFAULTS };
+try { Object.assign(S, JSON.parse(localStorage.getItem("neonpulse") || "{}")); } catch(e){}
+function save(){ localStorage.setItem("neonpulse", JSON.stringify(S)); }
+
+const THEMES = [
+  { name:"Cyberpunk", hues:[186, 300, 265], rainbow:false },
+  { name:"Synthwave", hues:[320, 265, 195], rainbow:false },
+  { name:"Matrix",    hues:[128, 145, 100], rainbow:false },
+  { name:"Inferno",   hues:[8,   35,  55 ], rainbow:false },
+  { name:"Ice",       hues:[200, 225, 180], rainbow:false },
+  { name:"Rainbow",   hues:[0,   120, 240], rainbow:true  }
+];
+let hueDrift = 0;
+function themeHue(p){           // p in 0..1 → hue
+  const t = THEMES[S.theme];
+  if (t.rainbow) return (p * 360 + hueDrift * 40) % 360;
+  const h = t.hues;
+  const x = p * (h.length - 1), i = Math.min(h.length - 2, Math.floor(x)), f = x - i;
+  return h[i] + (h[i+1] - h[i]) * f;
+}
+function col(p, l = 60, a = 1){ return `hsla(${themeHue(p)},100%,${l}%,${a})`; }
+
+/* ------------------------------- audio ------------------------------- */
+let actx = null, analyser = null, stream = null, demo = false, started = false;
+const FFT = 2048;
+let freq = new Uint8Array(FFT / 2);
+let wave = new Uint8Array(FFT);
+let bass = 0, mids = 0, treb = 0, energy = 0;
+const bassHist = new Array(48).fill(0);
+
+function buildAnalyser(src){
+  analyser = actx.createAnalyser();
+  analyser.fftSize = FFT;
+  analyser.smoothingTimeConstant = 0.78;
+  src.connect(analyser);            // never to destination — audio already plays
+  freq = new Uint8Array(analyser.frequencyBinCount);
+  wave = new Uint8Array(analyser.fftSize);
+}
+
+async function startCapture(){
+  try{
+    const st = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+    if (!st.getAudioTracks().length){
+      st.getTracks().forEach(t => t.stop());
+      toast("No audio in the share! Pick a screen/tab and tick “Also share audio”.", 5000);
+      return;
+    }
+    stream = st;
+    st.getAudioTracks()[0].addEventListener("ended", onSourceLost);
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    buildAnalyser(actx.createMediaStreamSource(st));
+    begin("SYSTEM AUDIO");
+  }catch(e){ toast("Capture cancelled or unavailable: " + e.message, 4000); }
+}
+
+async function startMic(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+    stream.getAudioTracks()[0].addEventListener("ended", onSourceLost);
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    buildAnalyser(actx.createMediaStreamSource(stream));
+    begin("MICROPHONE");
+  }catch(e){ toast("Microphone unavailable: " + e.message, 4000); }
+}
+
+function startDemo(){ demo = true; begin("DEMO"); }
+
+function onSourceLost(){
+  toast("Audio source ended — choose a new one.", 4000);
+  started = false; demo = false;
+  document.getElementById("start").style.display = "flex";
+}
+
+function begin(label){
+  document.getElementById("start").style.display = "none";
+  document.getElementById("srcName").textContent = "· " + label;
+  started = true;
+  if (!demo) toast("♪ Listening… play some music!", 2500);
+}
+
+/* synthetic groove for demo mode */
+function demoFill(t){
+  const beatMs = 469;                       // ~128 BPM
+  const ph = (t % beatMs) / beatMs;
+  const kick = Math.pow(1 - ph, 5) * 215;
+  const bar  = Math.floor(t / beatMs);
+  for (let i = 0; i < freq.length; i++){
+    const f = i / freq.length;
+    let v = kick * Math.exp(-i / 14)
+          + 90 * Math.exp(-Math.pow((i - 60 - 35 * Math.sin(t/900 + bar)), 2) / 320)
+          + 55 * Math.exp(-Math.pow((i - 200 - 90 * Math.sin(t/1400)), 2) / 1800)
+          + Math.random() * 22 * (1 - f);
+    if (bar % 8 >= 6) v *= 1.25;            // build-up every 8 beats
+    freq[i] = Math.min(255, v);
+  }
+  for (let i = 0; i < wave.length; i++){
+    wave[i] = 128 + (Math.sin(i / 9 + t / 60) * 38 + Math.sin(i / 3.7 + t / 31) * 22)
+              * (0.35 + kick / 215);
+  }
+}
+
+/* ------------------------------ beat engine ------------------------------ */
+let beatCount = 0, pop = 0, flash = 0, lastBeat = 0;
+const beatTimes = [];
+let bpm = 0;
+const shocks = [];
+
+function avgRange(a, b){
+  let s = 0; for (let i = a; i < b; i++) s += freq[i];
+  return s / (b - a) / 255;
+}
+
+function analyse(now){
+  if (demo) demoFill(now);
+  else { analyser.getByteFrequencyData(freq); analyser.getByteTimeDomainData(wave); }
+
+  bass = avgRange(1, 14);
+  mids = avgRange(14, 160);
+  treb = avgRange(160, Math.min(560, freq.length));
+  energy = energy * 0.85 + (bass * 0.5 + mids * 0.35 + treb * 0.15) * 0.15;
+
+  bassHist.push(bass); bassHist.shift();
+  let mean = 0; for (const v of bassHist) mean += v; mean /= bassHist.length;
+
+  const thresh = mean * (1 + 0.32 / S.sens) + 0.045 / S.sens;
+  if (bass > thresh && bass > 0.12 && now - lastBeat > 240){
+    lastBeat = now; onBeat(now);
+  }
+  pop *= 0.91;
+  flash *= 0.88;
+}
+
+function onBeat(now){
+  beatCount++;
+  pop = 1;
+  if (S.flash) flash = 0.30 + bass * 0.25;
+  if (S.shock) shocks.push({ r: 10, a: 0.8 });
+  burst(28 + (bass * 60 | 0));
+  beatTimes.push(now);
+  if (beatTimes.length > 12) beatTimes.shift();
+  if (beatTimes.length > 4){
+    const iv = [];
+    for (let i = 1; i < beatTimes.length; i++) iv.push(beatTimes[i] - beatTimes[i-1]);
+    iv.sort((a,b) => a - b);
+    const med = iv[iv.length >> 1];
+    if (med > 240 && med < 1100) bpm = Math.round(60000 / med);
+  }
+  document.getElementById("bpm").textContent = bpm ? bpm + " BPM" : "— BPM";
+}
+
+/* ------------------------------ particles ------------------------------ */
+const parts = [];
+function burst(n){
+  const cx = W/2, cy = H/2;
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 9 * (0.5 + bass);
+    parts.push({ x: cx, y: cy, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+      life: 1, sz: 1 + Math.random()*3, p: Math.random() });
+  }
+}
+function stepParticles(dt){
+  // ambient population (heavier in PARTICLES mode)
+  const target = S.mode === 3 ? S.particles : Math.min(S.particles, 80);
+  while (parts.length < target){
+    parts.push({ x: Math.random()*W, y: Math.random()*H,
+      vx:(Math.random()-.5)*0.6, vy:(Math.random()-.5)*0.6,
+      life: 0.4 + Math.random()*0.6, sz: 0.6 + Math.random()*2.4, p: Math.random() });
+  }
+  const swirl = 0.4 + treb * 2.5;
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i];
+    if (S.mode === 3){
+      const dx = p.x - W/2, dy = p.y - H/2, d = Math.hypot(dx, dy) + 1;
+      p.vx += (-dy / d) * swirl * 0.05 * dt - dx/d * (bass - 0.25) * 0.06 * dt;
+      p.vy += ( dx / d) * swirl * 0.05 * dt - dy/d * (bass - 0.25) * 0.06 * dt;
+    }
+    p.vx *= 0.985; p.vy *= 0.985;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.life -= 0.004 * dt;
+    if (p.life <= 0 || p.x < -20 || p.x > W+20 || p.y < -20 || p.y > H+20) parts.splice(i, 1);
+  }
+}
+function drawParticles(){
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const p of parts){
+    ctx.globalAlpha = Math.min(1, p.life) * 0.85;
+    ctx.fillStyle = col(p.p, 65);
+    const s = p.sz * (1 + pop * 0.8);
+    ctx.fillRect(p.x - s/2, p.y - s/2, s, s);
+  }
+  ctx.restore();
+}
+
+/* ===================================================================
+   PIXEL DANCE CREW
+   =================================================================== */
+const PW = 16, PH = 24;          // human sprite grid
+const DW = 24, DH = 16;          // dog sprite grid
+
+function makeFrame(w, h, draw){
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  const px = (x, y, color) => { if (color){ g.fillStyle = color; g.fillRect(x, y, 1, 1); } };
+  const rect = (x, y, w2, h2, color) => { g.fillStyle = color; g.fillRect(x, y, w2, h2); };
+  draw(px, rect);
+  return c;
+}
+
+/* pose: {la,ra: 'down'|'up'|'out', legs:'stand'|'apart', crouch:bool} */
+function humanFrame(c, pose){
+  return makeFrame(PW, PH, (px, rect) => {
+    const yo = pose.crouch ? 2 : 0;
+    const skin = c.skin, hair = c.hair, top = c.top, sh = c.shoe;
+
+    /* ---- legs (always end at y19, shoes y20-21) ---- */
+    if (c.dress){
+      if (pose.legs === "apart"){
+        px(6,16,skin); px(5,17,skin); px(5,18,skin); px(5,19,skin);
+        px(9,16,skin); px(10,17,skin); px(10,18,skin); px(10,19,skin);
+        rect(4,20,2,2,sh); rect(10,20,2,2,sh);
+      } else {
+        rect(6,16,1,4,skin); rect(9,16,1,4,skin);
+        rect(5,20,2,2,sh);  rect(9,20,2,2,sh);
+      }
+    } else {
+      const pants = c.bottom;
+      if (pose.legs === "apart"){
+        rect(5,14,2,2,pants); px(4,16,pants); px(4,17,pants); px(3,18,pants); px(3,19,pants);
+        rect(9,14,2,2,pants); px(11,16,pants); px(11,17,pants); px(12,18,pants); px(12,19,pants);
+        rect(2,20,3,2,sh); rect(11,20,3,2,sh);
+      } else {
+        rect(5,14 + yo,2,6 - yo,pants); rect(9,14 + yo,2,6 - yo,pants);
+        rect(4,20,3,2,sh); rect(9,20,3,2,sh);
+      }
+    }
+
+    /* ---- torso / dress ---- */
+    if (c.dress){
+      rect(5,8 + yo,6,4,top);
+      rect(4,12 + yo,8,2,top);
+      rect(3,14 + yo,10,Math.max(1, 2 - yo),top);
+    } else {
+      rect(5,8 + yo,6,6 - yo,top);
+    }
+
+    /* ---- arms ---- */
+    const arm = (side, kind) => {           // side -1 = left, 1 = right
+      const sx = side < 0 ? 4 : 11;         // shoulder column
+      if (kind === "down"){
+        rect(sx, 8 + yo, 1, 5, top); px(sx, 13 + yo, skin);
+      } else if (kind === "up"){
+        px(sx, 8 + yo, top); px(sx, 7 + yo, top);
+        const ux = side < 0 ? 3 : 12;
+        rect(ux, 4 + yo, 1, 3, top); px(ux, 3 + yo, skin);
+      } else {                              // out
+        if (side < 0){ rect(2, 9 + yo, 3, 1, top); px(1, 9 + yo, skin); }
+        else         { rect(11, 9 + yo, 3, 1, top); px(14, 9 + yo, skin); }
+      }
+    };
+    arm(-1, pose.la); arm(1, pose.ra);
+
+    /* ---- head ---- */
+    rect(5, 2 + yo, 6, 6, skin);
+    px(6, 4 + yo, "#101018"); px(9, 4 + yo, "#101018");      // eyes
+    px(7, 6 + yo, "#c2576a"); px(8, 6 + yo, "#c2576a");      // smile
+
+    /* ---- hair ---- */
+    const hs = c.hairStyle;
+    if (hs !== "cap") rect(5, 1 + yo, 6, 1, hair);
+    if (hs === "short"){
+      rect(4, 2 + yo, 1, 3, hair); rect(11, 2 + yo, 1, 3, hair);
+    } else if (hs === "long"){
+      rect(4, 2 + yo, 1, 9, hair); rect(11, 2 + yo, 1, 9, hair);
+      px(5, 2 + yo, hair); px(10, 2 + yo, hair);
+    } else if (hs === "ponytail"){
+      rect(4, 2 + yo, 1, 3, hair); rect(11, 2 + yo, 1, 2, hair);
+      rect(12, 3 + yo, 1, 6, hair); px(13, 5 + yo, hair);
+    } else if (hs === "curly"){
+      px(5, 0 + yo, hair); px(7, 0 + yo, hair); px(9, 0 + yo, hair);
+      rect(4, 1 + yo, 8, 1, hair);
+      rect(4, 2 + yo, 1, 4, hair); rect(11, 2 + yo, 1, 4, hair);
+    } else if (hs === "spiky"){
+      px(5, 0 + yo, hair); px(7, 0 + yo, hair); px(9, 0 + yo, hair); px(10, 0 + yo, hair);
+    } else if (hs === "buzz"){
+      /* fringe row only */
+    } else if (hs === "messy"){
+      px(6, 0 + yo, hair); px(8, 0 + yo, hair); px(10, 0 + yo, hair);
+      rect(4, 2 + yo, 1, 2, hair); rect(11, 2 + yo, 1, 2, hair);
+    } else if (hs === "cap"){
+      rect(4, 0 + yo, 8, 1, c.cap); rect(4, 1 + yo, 8, 1, c.cap);
+      rect(9, 2 + yo, 4, 1, c.cap);
+    }
+  });
+}
+
+function dogFrame(c, pose){
+  return makeFrame(DW, DH, (px, rect) => {
+    const fur = c.fur, dark = c.dark;
+    /* tail */
+    if (pose.tail === "up"){ px(5,7,fur); px(4,6,fur); px(3,5,fur); px(3,4,dark); }
+    else                   { px(5,8,fur); px(4,9,fur); px(3,10,fur); px(3,11,dark); }
+    /* body */
+    rect(6,8,11,4,fur);
+    rect(7,11,9,1,dark);
+    /* legs */
+    const ly = pose.jump ? 12 : 12;
+    const lh = pose.jump ? 2 : 3;
+    rect(7,ly,2,lh,fur); rect(13,ly,2,lh,fur);
+    if (!pose.jump){ rect(7,15,2,1,dark); rect(13,15,2,1,dark); }
+    /* collar */
+    rect(15,8,1,3,c.collar);
+    /* head */
+    rect(16,4,5,5,fur);
+    rect(20,6,3,2,fur);              /* snout */
+    px(22,6,"#181820");              /* nose */
+    px(18,5,"#181820");              /* eye */
+    rect(16,2,2,3,dark);             /* ear */
+    if (pose.tongue) px(21,9,"#ff6b9d");
+  });
+}
+
+const POSES = {
+  idle:{ la:"down", ra:"down", legs:"stand", crouch:false },
+  L:   { la:"up",   ra:"down", legs:"apart", crouch:false },
+  R:   { la:"down", ra:"up",   legs:"apart", crouch:false },
+  U:   { la:"up",   ra:"up",   legs:"stand", crouch:false },
+  X:   { la:"out",  ra:"out",  legs:"apart", crouch:false },
+  C:   { la:"out",  ra:"out",  legs:"stand", crouch:true  }
+};
+const DOGPOSES = {
+  wagU:{ tail:"up",   jump:false, tongue:true  },
+  wagD:{ tail:"down", jump:false, tongue:false },
+  jump:{ tail:"up",   jump:true,  tongue:true  }
+};
+
+const CREW_DEF = [
+  { name:"GIEDRĖ",   accent:"#ff4fa3", skin:"#ffdbac", hair:"#ffd75e", hairStyle:"long",
+    top:"#ff2e88", dress:true,  shoe:"#ffffff", seq:["L","R","L","R","U","C","U","C"] },
+  { name:"MARTYNAS", accent:"#ff8c00", skin:"#f1c27d", hair:"#3b2a1a", hairStyle:"spiky",
+    top:"#ff8c00", bottom:"#23304a", dress:false, shoe:"#dddddd", seq:["R","C","L","C","U","U","X","C"] },
+  { name:"AGNĖ",     accent:"#00e5ff", skin:"#ffe0bd", hair:"#8a5a2b", hairStyle:"ponytail",
+    top:"#00b8d4", dress:true,  shoe:"#222a3a", seq:["U","C","L","C","U","C","R","C"] },
+  { name:"AUGUSTAS", accent:"#3b82f6", skin:"#ffdbac", hair:"#e8c66a", hairStyle:"short",
+    top:"#3b82f6", bottom:"#1d2436", dress:false, shoe:"#cccccc", seq:["X","U","X","C","L","R","L","R"] },
+  { name:"KAROLINA", accent:"#a855f7", skin:"#f1c27d", hair:"#241e2e", hairStyle:"long",
+    top:"#a855f7", dress:true,  shoe:"#eeeeee", seq:["R","L","R","L","C","U","C","U"] },
+  { name:"ARTIS",    accent:"#ffb86b", dog:true, fur:"#c98c4a", dark:"#8a5a2b", collar:"#ff2e4a",
+    seq:["wagU","wagD","wagU","wagD","wagU","wagD","jump","jump"] },
+  { name:"IGNAS",    accent:"#ef4444", skin:"#ffe0bd", hair:"#2b2b2b", hairStyle:"cap", cap:"#ef4444",
+    top:"#e5e7eb", bottom:"#2b3346", dress:false, shoe:"#ef4444", seq:["L","L","R","R","U","X","U","X"] },
+  { name:"EMILIJA",  accent:"#a3e635", skin:"#ffdbac", hair:"#d2491e", hairStyle:"curly",
+    top:"#84cc16", dress:true,  shoe:"#ffffff", seq:["C","U","C","U","L","R","X","X"] },
+  { name:"DOVYDAS",  accent:"#22c55e", skin:"#e0ac69", hair:"#1c1c1c", hairStyle:"buzz",
+    top:"#22c55e", bottom:"#202a3c", dress:false, shoe:"#111111", seq:["U","C","X","C","R","C","L","C"] },
+  { name:"PAULIUS",  accent:"#facc15", skin:"#ffdbac", hair:"#5b4226", hairStyle:"messy",
+    top:"#facc15", bottom:"#16202e", dress:false, shoe:"#facc15", seq:["X","C","U","C","X","C","U","U"] }
+];
+
+const CREW = CREW_DEF.map((c, i) => {
+  const frames = {};
+  if (c.dog) for (const k in DOGPOSES) frames[k] = dogFrame(c, DOGPOSES[k]);
+  else       for (const k in POSES)    frames[k] = humanFrame(c, POSES[k]);
+  return { ...c, frames, i, wob: Math.random() * Math.PI * 2 };
+});
+
+function drawCrew(now){
+  if (!S.dancers) return;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  const scale = Math.max(3, Math.round((W / 320) * S.dancerSize));
+  const floorY = H - 26 - scale * 2;
+  const n = CREW.length;
+
+  /* neon stage line */
+  ctx.strokeStyle = col(0.1, 60, 0.5);
+  ctx.shadowColor = col(0.1, 60, 1);
+  ctx.shadowBlur = S.glow;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, floorY + 1); ctx.lineTo(W, floorY + 1); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  for (let i = 0; i < n; i++){
+    const c = CREW[i];
+    const x = W * (i + 0.5) / n;
+    const groove = Math.sin(now / 280 + c.wob) * 2;
+    const bounce = pop * (14 + bass * 26) * (c.dog ? 1.5 : 1) * (S.dancerSize);
+    const y = floorY - bounce + groove;
+    const key = c.seq[(beatCount + i) % c.seq.length];
+    const f = c.frames[key] || c.frames[Object.keys(c.frames)[0]];
+    const w = f.width * scale, h = f.height * scale;
+
+    /* spotlight pool */
+    if (S.spot){
+      const g = ctx.createRadialGradient(x, floorY, 2, x, floorY, w * 0.9);
+      g.addColorStop(0, hexA(c.accent, 0.20 + pop * 0.30));
+      g.addColorStop(1, "transparent");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - w, floorY - w * 0.4, w * 2, w * 0.9);
+    }
+    /* shadow */
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.beginPath();
+    ctx.ellipse(x, floorY + 3, w * 0.30 * (1 - pop * 0.3), 3 + scale * 0.6, 0, 0, 7);
+    ctx.fill();
+
+    ctx.drawImage(f, Math.round(x - w / 2), Math.round(y - h), w, h);
+
+    if (S.names){
+      ctx.font = `bold ${Math.max(10, scale * 3.2)}px monospace`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = c.accent;
+      ctx.shadowColor = c.accent;
+      ctx.shadowBlur = 8;
+      ctx.fillText(c.name, x, floorY + 16 + scale);
+      ctx.shadowBlur = 0;
+    }
+  }
+  ctx.restore();
+}
+function hexA(hex, a){
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* ===================================================================
+   VISUALIZER MODES
+   =================================================================== */
+const MODES = ["BARS","RADIAL","WAVEFORM","PARTICLES","TUNNEL"];
+
+function drawGridFloor(){
+  if (!S.grid) return;
+  const horizon = H * 0.62;
+  ctx.save();
+  ctx.strokeStyle = col(0.5, 50, 0.10 + bass * 0.12);
+  ctx.lineWidth = 1;
+  const cx = W / 2;
+  for (let i = -12; i <= 12; i++){
+    ctx.beginPath();
+    ctx.moveTo(cx + i * W * 0.04, horizon);
+    ctx.lineTo(cx + i * W * 0.22, H);
+    ctx.stroke();
+  }
+  const scroll = (performance.now() / 40) % 60;
+  for (let i = 0; i < 14; i++){
+    const t = i / 14;
+    const y = horizon + Math.pow(t, 2.2) * (H - horizon) + scroll * Math.pow(t, 2.2);
+    if (y > H) continue;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---- 1. BARS ---- */
+const peaks = new Array(96).fill(0);
+function modeBars(){
+  drawGridFloor();
+  const N = 96, bw = W / N;
+  const base = H - 8;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < N; i++){
+    const idx = Math.max(1, Math.floor(Math.pow(i / N, 1.8) * freq.length * 0.72));
+    let v = (freq[idx] / 255) * S.sens; v = Math.min(1, Math.pow(v, 1.4));
+    const bh = v * H * 0.62 * (1 + pop * 0.12);
+    const p = i / N;
+    ctx.fillStyle = col(p, 55, 0.9);
+    ctx.shadowColor = col(p, 60, 1);
+    ctx.shadowBlur = S.glow;
+    ctx.fillRect(i * bw + 1, base - bh, bw - 2, bh);
+    /* reflection */
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = col(p, 55, 0.10);
+    ctx.fillRect(i * bw + 1, base, bw - 2, bh * 0.25);
+    /* falling peak cap */
+    peaks[i] = Math.max(peaks[i] - H * 0.004, bh);
+    ctx.fillStyle = col(p, 80, 0.95);
+    ctx.fillRect(i * bw + 1, base - peaks[i] - 3, bw - 2, 3);
+  }
+  ctx.restore();
+}
+
+/* ---- 2. RADIAL ---- */
+let radRot = 0;
+function modeRadial(now){
+  const cx = W / 2, cy = H * 0.44;
+  const baseR = Math.min(W, H) * 0.16 * (1 + bass * 0.55 + pop * 0.18);
+  radRot += 0.002 + treb * 0.02;
+  const N = 128;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(radRot);
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < N; i++){
+    const idx = Math.max(1, Math.floor(Math.pow(i / N, 1.6) * freq.length * 0.6));
+    let v = Math.min(1, (freq[idx] / 255) * S.sens);
+    const len = Math.pow(v, 1.3) * Math.min(W, H) * 0.30;
+    const a = (i / N) * Math.PI * 2;
+    const p = i / N;
+    ctx.strokeStyle = col(p, 58, 0.9);
+    ctx.shadowColor = col(p, 60, 1);
+    ctx.shadowBlur = S.glow * 0.6;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * baseR, Math.sin(a) * baseR);
+    ctx.lineTo(Math.cos(a) * (baseR + len), Math.sin(a) * (baseR + len));
+    ctx.stroke();
+  }
+  /* inner waveform ring */
+  ctx.shadowBlur = S.glow;
+  ctx.strokeStyle = col(0.5 + Math.sin(now/900)*0.2, 70, 0.95);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= 120; i++){
+    const a = (i / 120) * Math.PI * 2;
+    const wv = (wave[(i * 16) % wave.length] - 128) / 128;
+    const r = baseR * 0.78 + wv * 26 * S.sens;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.restore();
+}
+
+/* ---- 3. WAVEFORM ---- */
+function modeWave(now){
+  drawGridFloor();
+  const mid = H * 0.42;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineWidth = 2.5;
+  for (let layer = 0; layer < 3; layer++){
+    const off = (layer - 1) * (14 + bass * 50);
+    ctx.strokeStyle = col(layer / 2, 60, layer === 1 ? 0.95 : 0.45);
+    ctx.shadowColor = col(layer / 2, 60, 1);
+    ctx.shadowBlur = S.glow;
+    ctx.beginPath();
+    const step = Math.max(1, Math.floor(wave.length / W * 2));
+    for (let i = 0, x = 0; i < wave.length; i += step, x += W / (wave.length / step)){
+      const v = (wave[i] - 128) / 128;
+      const y = mid + off + v * H * 0.26 * S.sens * (1 + pop * 0.3);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---- 4. PARTICLES (core + swirl handled in stepParticles) ---- */
+function modeParts(now){
+  const cx = W/2, cy = H/2;
+  const r = Math.min(W,H) * (0.06 + bass * 0.10 + pop * 0.04);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
+  g.addColorStop(0, col(0.2, 65, 0.5));
+  g.addColorStop(0.4, col(0.6, 55, 0.18));
+  g.addColorStop(1, "transparent");
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r*3, cy - r*3, r*6, r*6);
+  ctx.strokeStyle = col(0.1, 70, 0.9);
+  ctx.shadowColor = col(0.1, 70, 1);
+  ctx.shadowBlur = S.glow;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+  ctx.restore();
+}
+
+/* ---- 5. TUNNEL ---- */
+const rings = [];
+let lastRing = 0;
+function modeTunnel(now){
+  const cx = W/2, cy = H*0.46;
+  if (now - lastRing > Math.max(40, 160 - energy * 220)){
+    lastRing = now;
+    rings.push({ z: 1, sides: 3 + (beatCount % 5), p: Math.random(), rot: Math.random() * 6 });
+  }
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = rings.length - 1; i >= 0; i--){
+    const r = rings[i];
+    r.z -= (0.006 + energy * 0.02) * (1 + pop * 0.6);
+    if (r.z <= 0.04){ rings.splice(i, 1); continue; }
+    const rad = (Math.min(W,H) * 0.55) / r.z * 0.10;
+    r.rot += treb * 0.04;
+    ctx.strokeStyle = col(r.p, 60, Math.min(0.9, (1 - r.z) * 1.2));
+    ctx.shadowColor = col(r.p, 60, 1);
+    ctx.shadowBlur = S.glow * 0.7;
+    ctx.lineWidth = 1.5 + (1 - r.z) * 3;
+    ctx.beginPath();
+    for (let s = 0; s <= r.sides; s++){
+      const a = r.rot + (s / r.sides) * Math.PI * 2;
+      const x = Math.cos(a) * rad, y = Math.sin(a) * rad * 0.85;
+      s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+  /* core */
+  ctx.fillStyle = col(0.3, 75, 0.5 + pop * 0.5);
+  ctx.shadowColor = col(0.3, 75, 1);
+  ctx.shadowBlur = S.glow * 2;
+  ctx.beginPath(); ctx.arc(0, 0, 5 + bass * 30, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+/* ------------------------------ main loop ------------------------------ */
+let lastT = performance.now();
+let lastCycle = performance.now();
+let silentSince = 0;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt = Math.min(3, (now - lastT) / 16.6); lastT = now;
+  if (!started){ return; }
+
+  analyse(now);
+  hueDrift += 0.002 * dt;
+
+  if (S.autoCycle && now - lastCycle > 30000){ lastCycle = now; setMode((S.mode + 1) % MODES.length); }
+
+  /* silence hint */
+  if (energy < 0.01 && !demo){
+    if (!silentSince) silentSince = now;
+    else if (now - silentSince > 6000){ silentSince = now; toast("Not hearing anything — is music playing? 🎵", 3000); }
+  } else silentSince = 0;
+
+  /* trail-fade clear */
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = `rgba(3,3,10,${1 - S.trail})`;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  if (S.shake && pop > 0.05){
+    const s = pop * 9 * bass;
+    ctx.translate((Math.random()-.5) * s, (Math.random()-.5) * s);
+  }
+
+  switch (S.mode){
+    case 0: modeBars();      break;
+    case 1: modeRadial(now); break;
+    case 2: modeWave(now);   break;
+    case 3: modeParts(now);  break;
+    case 4: modeTunnel(now); break;
+  }
+
+  stepParticles(dt);
+  drawParticles();
+
+  /* shockwaves */
+  if (S.shock){
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = shocks.length - 1; i >= 0; i--){
+      const sw = shocks[i];
+      sw.r += 14 * dt; sw.a *= 0.94;
+      if (sw.a < 0.02){ shocks.splice(i,1); continue; }
+      ctx.strokeStyle = col(0.15, 65, sw.a);
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(W/2, H/2, sw.r, 0, 7); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawCrew(now);
+  ctx.restore();
+
+  /* beat flash */
+  if (flash > 0.02){
+    ctx.fillStyle = col(0.5, 70, flash * 0.25);
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+requestAnimationFrame(loop);
+
+/* ------------------------------ UI wiring ------------------------------ */
+const $ = id => document.getElementById(id);
+
+function toast(msg, ms = 2500){
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms);
+}
+
+function setMode(m){
+  S.mode = m; save();
+  $("modeName").textContent = MODES[m];
+  document.querySelectorAll(".mbtn").forEach((b, i) => b.classList.toggle("on", i === m));
+}
+const bar = $("modebar");
+MODES.forEach((name, i) => {
+  const b = document.createElement("button");
+  b.className = "mbtn"; b.textContent = `${i+1} ${name}`;
+  b.onclick = () => setMode(i);
+  bar.appendChild(b);
+});
+
+function applyTheme(){
+  const root = document.documentElement;
+  root.style.setProperty("--accent",  `hsl(${themeHue(0)},100%,60%)`);
+  root.style.setProperty("--accent2", `hsl(${themeHue(1)},100%,60%)`);
+}
+
+function bindRange(id, key){ const el = $(id); el.value = S[key];
+  el.oninput = () => { S[key] = parseFloat(el.value); save(); }; }
+function bindCheck(id, key, fn){ const el = $(id); el.checked = S[key];
+  el.onchange = () => { S[key] = el.checked; save(); if (fn) fn(); }; }
+
+const themeSel = $("sTheme");
+THEMES.forEach((t, i) => { const o = document.createElement("option"); o.value = i; o.textContent = t.name; themeSel.appendChild(o); });
+themeSel.value = S.theme;
+themeSel.onchange = () => { S.theme = +themeSel.value; save(); applyTheme(); };
+
+bindRange("sGlow","glow"); bindRange("sTrail","trail"); bindRange("sPart","particles");
+bindRange("sSens","sens"); bindRange("sSize","dancerSize");
+bindCheck("sShake","shake"); bindCheck("sFlash","flash"); bindCheck("sWave","shock");
+bindCheck("sGrid","grid");
+bindCheck("sScan","scan", () => $("fx").classList.toggle("scan", S.scan));
+bindCheck("sDance","dancers"); bindCheck("sNames","names"); bindCheck("sSpot","spot");
+bindCheck("sAuto","autoCycle");
+$("fx").classList.toggle("scan", S.scan);
+
+$("bReset").onclick = () => { S = { ...DEFAULTS }; save(); location.reload(); };
+$("bFull").onclick = toggleFull;
+$("gear").onclick = () => $("panel").classList.toggle("open");
+
+$("bCapture").onclick = startCapture;
+$("bMic").onclick = startMic;
+$("bDemo").onclick = startDemo;
+
+function toggleFull(){
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(()=>{});
+}
+
+addEventListener("keydown", e => {
+  if (e.key >= "1" && e.key <= "5") setMode(+e.key - 1);
+  else switch (e.key.toLowerCase()){
+    case "m": setMode((S.mode + 1) % MODES.length); break;
+    case "f": toggleFull(); break;
+    case "c": $("panel").classList.toggle("open"); break;
+    case "h": document.body.classList.toggle("hideui"); break;
+    case "d": S.dancers = !S.dancers; $("sDance").checked = S.dancers; save(); break;
+    case "t": S.theme = (S.theme + 1) % THEMES.length; themeSel.value = S.theme; save();
+              applyTheme(); toast("Theme: " + THEMES[S.theme].name, 1200); break;
+    case "a": S.autoCycle = !S.autoCycle; $("sAuto").checked = S.autoCycle; save();
+              toast("Auto-cycle " + (S.autoCycle ? "ON" : "OFF"), 1200); break;
+    case "escape": $("panel").classList.remove("open"); break;
+  }
+});
+
+/* auto-hide cursor + UI on idle */
+let idleT;
+addEventListener("mousemove", () => {
+  document.body.classList.remove("idle");
+  clearTimeout(idleT);
+  idleT = setTimeout(() => { if (started) document.body.classList.add("idle"); }, 3000);
+});
+
+setMode(S.mode);
+applyTheme();
+</script>
+</body>
+</html>

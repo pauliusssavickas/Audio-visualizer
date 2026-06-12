@@ -34,7 +34,11 @@ Themes (Cyberpunk, Synthwave, Matrix, Inferno, Ice, Rainbow), glow intensity, mo
 
 ## 🕺 The crew
 
-Every dancer is a procedurally generated pixel-art sprite with their own hair, outfit, accent color, spotlight and unique 8-step dance routine — they jump, raise arms and crouch exactly on detected beats. Artis the dog wags his tail to the rhythm and jumps on the drop.
+Every dancer is a procedurally generated pixel-art sprite with their own hair, outfit, accent color and spotlight. A beat-phase dance engine drives 9 distinct moves — arm pumps, jumps, 360° spins, side kicks, hip sways, wave combos, headbanging, shuffles and disco leans — each character cycles their own 4-move routine, one move per 4-beat bar, with bounce height scaled by bass intensity. When the music stops, they stop and idle-sway. Artis the dog wags, spins and does zoomies.
+
+## 🎯 Charlie
+
+Charlie (airsoft camo, olive cap) joins the lineup at a random spot every load and dances with the crew — until roughly every 30 seconds a sniper appears at a random screen edge, settles his laser on Charlie, and takes him out with a single BB. Charlie topples over, racks up a ☠ counter under his name, and respawns a few seconds later. Toggle the whole bit in settings (*Charlie & sniper*). It's an inside joke; no Charlies were harmed.
 
 ## 🔧 Tech notes
 

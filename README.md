@@ -34,7 +34,7 @@ Themes (Cyberpunk, Synthwave, Matrix, Inferno, Ice, Rainbow), glow intensity, mo
 
 ## 🕺 The crew
 
-Every dancer is a procedurally generated pixel-art sprite with their own hair, outfit, accent color and spotlight. A beat-phase dance engine drives 9 distinct moves — arm pumps, jumps, 360° spins, side kicks, hip sways, wave combos, headbanging, shuffles and disco leans — each character cycles their own 4-move routine, one move per 4-beat bar, with bounce height scaled by bass intensity. When the music stops, they stop and idle-sway. Artis the dog wags, spins and does zoomies.
+Dancers come in two styles, switchable with **S** or in settings: **stick figures** (default — glowing neon skeletons with smoothly animated limbs and knee-bending IK) and **pixel-art sprites**. Both share a beat-phase dance engine that keeps everyone moving continuously on a predicted beat grid, re-synced on every detected beat. It drives 9 distinct moves — arm pumps, jumps, 360° spins, side kicks, hip sways, wave combos, headbanging, shuffles and disco leans — each character cycles their own 4-move routine, one move per 4-beat bar, with bounce height scaled by bass intensity. When the music stops, they stop and idle-sway. Artis the dog wags, spins and does zoomies.
 
 ## 🎯 Charlie
 

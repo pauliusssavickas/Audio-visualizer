@@ -106,7 +106,7 @@
 <div id="hud" class="ui"><b>⚡ NEON PULSE</b><span id="modeName">BARS</span><span id="bpm">— BPM</span><span id="srcName"></span></div>
 <div id="modebar" class="ui"></div>
 <button id="gear" class="ui" title="Settings (C)">⚙</button>
-<div id="hint" class="ui"><b>1–5</b> modes · <b>M</b> cycle · <b>F</b> fullscreen · <b>C</b> settings · <b>D</b> dancers · <b>T</b> theme · <b>H</b> hide UI</div>
+<div id="hint" class="ui"><b>1–5</b> modes · <b>M</b> cycle · <b>F</b> fullscreen · <b>C</b> settings · <b>D</b> dancers · <b>S</b> stick/pixel · <b>T</b> theme · <b>H</b> hide UI</div>
 
 <div id="panel">
   <h2>⚙ CUSTOMIZE</h2>
@@ -124,6 +124,10 @@
   <div class="row"><span>Floor grid</span><input type="checkbox" id="sGrid"></div>
   <div class="row"><span>Scanlines</span><input type="checkbox" id="sScan"></div>
   <h3>Dance crew</h3>
+  <div class="row"><span>Style</span><select id="sStyle">
+    <option value="stick">Stick figures</option>
+    <option value="pixel">Pixel art</option>
+  </select></div>
   <div class="row"><span>Show dancers</span><input type="checkbox" id="sDance"></div>
   <div class="row"><span>Dancer size</span><input type="range" id="sSize" min="0.6" max="2" step="0.05"></div>
   <div class="row"><span>Name tags</span><input type="checkbox" id="sNames"></div>
@@ -160,7 +164,7 @@ const DEFAULTS = {
   mode: 0, theme: 0, glow: 18, trail: 0.45, particles: 180, sens: 1.2,
   shake: true, flash: true, shock: true, grid: true, scan: true,
   dancers: true, dancerSize: 1.1, names: true, spot: true, autoCycle: false,
-  charlie: true
+  charlie: true, style: "stick"
 };
 let S = { ...DEFAULTS };
 try { Object.assign(S, JSON.parse(localStorage.getItem("neonpulse") || "{}")); } catch(e){}
@@ -538,6 +542,7 @@ const DOGPOSES = {
    beat. It returns {pose, dx, dy, rot, sx, sy} (dx/dy in sprite-grid pixels).
    Each move runs for a 4-beat bar, then the routine advances. */
 const BNC = t => Math.sin(Math.PI * t);
+const TAU = Math.PI * 2;
 const MOVES = {
   pump(b,t){ return { pose: b%2 ? "R" : "L", dy: -12*BNC(t), rot:(b%2?1:-1)*0.07 }; },
   jump(b,t){ return b%2 ? { pose:"UC", dy:-26*BNC(t), sy:1+0.12*BNC(t) }
@@ -562,6 +567,207 @@ const DOGMOVES = {
   zoom(b,t){ return { pose:(t*4|0)%2?"wagU":"wagD",
                       dx:Math.sin((b+t)*Math.PI/2)*26, dy:-6*Math.abs(Math.sin(Math.PI*t*2)) }; }
 };
+
+/* ---- stick-figure move set (same routine names, continuous limb params) ----
+   Angles are radians from straight-down; 0 = arm hanging, ~2.8 = raised.
+   liftL/liftR raise a foot {h: height, f: forward} in grid units. */
+const STICKMOVES = {
+  pump(b,t){ const s=b%2>0, e=0.55-0.45*BNC(t);
+    return { dy:-9*BNC(t), lean:(s?1:-1)*0.06,
+      aL1: s?2.65:0.45+0.2*Math.sin(TAU*t), aL2: s?e:0.25,
+      aR1: s?0.45+0.2*Math.sin(TAU*t):2.65, aR2: s?0.25:e }; },
+  jump(b,t){ return b%2
+    ? { dy:-24*BNC(t), air:true, aL1:2.8, aR1:2.8, aL2:0.15, aR2:0.15 }
+    : { dy:6*BNC(t), stance:4.2, aL1:-0.25, aR1:-0.25, aL2:0.1, aR2:0.1, lean:0.10*BNC(t) }; },
+  spin(b,t){ if(b%4===3){ const e=t*t*(3-2*t);
+      return { rot:TAU*e, dy:-16*BNC(t), aL1:1.5, aR1:1.5, aL2:0.1, aR2:0.1, stance:3.5 }; }
+    return STICKMOVES.pump(b,t); },
+  kick(b,t){ const L=b%2===0, k={h:3.5+4*BNC(t), f:2.5+3*BNC(t)};
+    return { dy:-4*BNC(t), lean:(L?-1:1)*0.09,
+      liftL: L?k:undefined, liftR: L?undefined:k,
+      aL1:1.25, aR1:1.25, aL2:0.2, aR2:0.2 }; },
+  sway(b,t){ const p=Math.sin(Math.PI*(b+t));
+    return { dx:8*p, lean:0.13*p, dy:-4*BNC(t),
+      aL1:0.6+0.5*p, aR1:0.6-0.5*p, aL2:0.3, aR2:0.3 }; },
+  wave(b,t){ return { dy:-8*BNC(t), stance:3,
+      aL1:1.7+0.55*Math.sin(TAU*t),         aL2:0.6*Math.sin(TAU*t+1.5)+0.3,
+      aR1:1.7+0.55*Math.sin(TAU*t+Math.PI), aR2:0.6*Math.sin(TAU*t+1.5+Math.PI)+0.3 }; },
+  headbang(b,t){ return { lean:0.42*BNC(t), dy:-5*BNC(t),
+      aL1:2.9, aR1:2.9, aL2:0.35, aR2:0.35, stance:3.5 }; },
+  shuffle(b,t){ const s=b%2?1:-1;
+    return { dx:7*Math.sin(TAU*t)*s, dy:-5*Math.abs(Math.sin(TAU*t)),
+      stance:4.4, aL1:0.95, aR1:0.95,
+      aL2:0.45*Math.sin(TAU*t)+0.3, aR2:-0.45*Math.sin(TAU*t)+0.3,
+      lean:0.07*Math.sin(TAU*t) }; },
+  disco(b,t){ const s=b%2?1:-1;
+    return { dy:-9*BNC(t), lean:s*(0.05+0.10*t), dx:4*Math.sin(Math.PI*(b+t)),
+      aL1: s>0?2.5+0.3*t:0.45, aL2:0.15,
+      aR1: s>0?0.45:2.5+0.3*t, aR2:0.15 }; }
+};
+
+/* two-bone IK: knee position for hip→foot, bending outward per side */
+function kneeIK(hx, hy, fx, fy, l, side){
+  let dx = fx - hx, dy2 = fy - hy, d = Math.hypot(dx, dy2) || 0.001;
+  const max = 2 * l * 0.999;
+  if (d > max){ dx *= max / d; dy2 *= max / d; d = max; fx = hx + dx; fy = hy + dy2; }
+  const h = Math.sqrt(Math.max(0, l * l - (d / 2) * (d / 2)));
+  const mx = hx + dx / 2, my = hy + dy2 / 2;
+  const px = -dy2 / d * h, py = dx / d * h;
+  return (mx + px) * side > (mx - px) * side
+    ? { kx: mx + px, ky: my + py, fx, fy }
+    : { kx: mx - px, ky: my - py, fx, fy };
+}
+
+function drawStickHair(c, hx, hy, r, u, now){
+  ctx.lineCap = "round";
+  ctx.lineWidth = 0.5 * u;
+  if (c.hairStyle === "cap"){
+    ctx.fillStyle = c.cap;
+    ctx.beginPath(); ctx.arc(hx, hy, r * 1.05, Math.PI, TAU); ctx.fill();
+    ctx.strokeStyle = c.cap;
+    ctx.beginPath(); ctx.moveTo(hx + r * 0.8, hy - r * 0.25); ctx.lineTo(hx + r * 1.9, hy - r * 0.25); ctx.stroke();
+    if (c.charlie){                                    /* airsoft goggle band */
+      ctx.strokeStyle = "#ff6b35"; ctx.lineWidth = 0.45 * u;
+      ctx.beginPath(); ctx.moveTo(hx - r, hy - 0.1 * r); ctx.lineTo(hx + r, hy - 0.1 * r); ctx.stroke();
+    }
+    return;
+  }
+  ctx.strokeStyle = c.hair;
+  ctx.beginPath();
+  switch (c.hairStyle){
+    case "long":
+      ctx.moveTo(hx - r, hy); ctx.lineTo(hx - r - 0.2 * u, hy + 2.8 * r);
+      ctx.moveTo(hx + r, hy); ctx.lineTo(hx + r + 0.2 * u, hy + 2.8 * r); break;
+    case "ponytail": {
+      const sw = Math.sin(now / 180) * 0.6 * u;
+      ctx.moveTo(hx + r, hy - 0.3 * r);
+      ctx.quadraticCurveTo(hx + 2 * r, hy + 0.5 * r + sw, hx + 1.6 * r, hy + 2 * r + sw); break; }
+    case "curly":
+      for (let k = -1; k <= 1; k++){
+        ctx.moveTo(hx + k * 0.9 * r + 0.45 * r, hy - r * 0.9);
+        ctx.arc(hx + k * 0.9 * r, hy - r * 0.9, 0.45 * r, 0, TAU);
+      } break;
+    case "spiky":
+      for (let k = -1; k <= 1; k++){
+        ctx.moveTo(hx + k * 0.7 * r, hy - r); ctx.lineTo(hx + k * 1.1 * r, hy - r - 0.9 * u);
+      } break;
+    case "messy":
+      ctx.moveTo(hx - 0.5 * r, hy - r); ctx.lineTo(hx - 0.9 * r, hy - r - 0.7 * u);
+      ctx.moveTo(hx + 0.4 * r, hy - r); ctx.lineTo(hx + 0.7 * r, hy - r - 0.8 * u); break;
+    /* buzz: nothing */
+  }
+  ctx.stroke();
+}
+
+function drawStickHuman(c, m, x, floorY, u, now){
+  const legSeg = 4.6 * u, armSeg = 3.2 * u, torso = 6 * u, headR = 2.1 * u;
+  const dx = (m.dx || 0) * u * 0.5, dy = (m.dy || 0) * u * 0.5;
+  ctx.save();
+  ctx.translate(x + dx, floorY - 9 * u + dy);
+  ctx.rotate(m.rot || 0);
+  const lean = m.lean || 0;
+  const nx = Math.sin(lean) * torso, ny = -Math.cos(lean) * torso;     /* neck */
+  const shx = nx * 0.92, shy = ny * 0.92;                              /* shoulders */
+  const hcx = nx + Math.sin(lean) * (headR + 0.6 * u);
+  const hcy = ny - Math.cos(lean) * (headR + 0.6 * u);                 /* head center */
+
+  const stance = (m.stance ?? 2.5) * u;
+  const legs = [];
+  for (const s of [-1, 1]){
+    let fx, fy;
+    if (m.air){ fx = s * 1.6 * u; fy = 5.5 * u; }
+    else {
+      const lift = s < 0 ? m.liftL : m.liftR;
+      fx = s * stance + (lift ? s * (lift.f || 0) * u : 0);
+      fy = (9 * u - dy) - (lift ? (lift.h || 0) * u : 0);   /* feet stay on the stage */
+    }
+    legs.push(kneeIK(0, 0, fx, fy, legSeg, s));
+  }
+  const arms = [];
+  for (const s of [-1, 1]){
+    const a1 = s < 0 ? (m.aL1 ?? 0.3) : (m.aR1 ?? 0.3);
+    const a2 = s < 0 ? (m.aL2 ?? 0.2) : (m.aR2 ?? 0.2);
+    const ex = shx + s * Math.sin(a1) * armSeg, ey = shy + Math.cos(a1) * armSeg;
+    arms.push({ ex, ey, hx: ex + s * Math.sin(a1 + a2) * armSeg, hy: ey + Math.cos(a1 + a2) * armSeg });
+  }
+
+  const drawBones = () => {
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(nx, ny);
+    for (const a of arms){ ctx.moveTo(shx, shy); ctx.lineTo(a.ex, a.ey); ctx.lineTo(a.hx, a.hy); }
+    for (const l of legs){ ctx.moveTo(0, 0); ctx.lineTo(l.kx, l.ky); ctx.lineTo(l.fx, l.fy); }
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(hcx, hcy, headR, 0, TAU); ctx.stroke();
+  };
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.strokeStyle = c.accent; ctx.lineWidth = 1.05 * u;                /* neon tube */
+  ctx.shadowColor = c.accent; ctx.shadowBlur = S.glow;
+  drawBones();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 0.34 * u; /* hot core */
+  drawBones();
+
+  if (c.dress){
+    ctx.fillStyle = hexA(c.top, 0.55);
+    ctx.beginPath();
+    ctx.moveTo(shx * 0.5, shy * 0.5);
+    ctx.lineTo(-3 * u, 1.2 * u); ctx.lineTo(3 * u, 1.2 * u);
+    ctx.closePath(); ctx.fill();
+  }
+  if (m.dead){
+    ctx.strokeStyle = "#ff4455"; ctx.lineWidth = 0.3 * u;
+    for (const s of [-1, 1]){
+      ctx.beginPath();
+      ctx.moveTo(hcx + s * 0.9 * u - 0.4 * u, hcy - 0.4 * u); ctx.lineTo(hcx + s * 0.9 * u + 0.4 * u, hcy + 0.4 * u);
+      ctx.moveTo(hcx + s * 0.9 * u + 0.4 * u, hcy - 0.4 * u); ctx.lineTo(hcx + s * 0.9 * u - 0.4 * u, hcy + 0.4 * u);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(hcx - 1.0 * u, hcy - 0.45 * u, 0.5 * u, 0.5 * u);
+    ctx.fillRect(hcx + 0.5 * u, hcy - 0.45 * u, 0.5 * u, 0.5 * u);
+  }
+  drawStickHair(c, hcx, hcy, headR, u, now);
+  ctx.restore();
+}
+
+function drawStickDog(c, m, x, floorY, u, now){
+  const dx = (m.dx || 0) * u * 0.5, dy = (m.dy || 0) * u * 0.5;
+  ctx.save();
+  ctx.translate(x + dx, floorY - 5 * u + dy);
+  ctx.rotate(m.rot || 0);
+  const tailUp = m.pose === "wagU" || m.pose === "jump";
+  const wag = 0.25 + (tailUp ? 0.9 : 0.15) + Math.sin(now / 90) * 0.12;
+  const tuck = m.pose === "jump";
+  const bones = () => {
+    ctx.beginPath();
+    ctx.moveTo(-5 * u, 0); ctx.lineTo(4 * u, 0);                       /* spine */
+    for (const [lx, s] of [[-4 * u, -1], [-3 * u, 1], [2.4 * u, -1], [3.4 * u, 1]]){
+      const fy = tuck ? 3 * u : Math.min(5 * u - dy, 5.2 * u);         /* legs */
+      ctx.moveTo(lx, 0); ctx.lineTo(lx + s * 0.8 * u, fy);
+    }
+    ctx.moveTo(-5 * u, 0);                                             /* tail */
+    ctx.lineTo(-5 * u - 2.4 * u * Math.cos(wag), -2.4 * u * Math.sin(wag));
+    ctx.moveTo(4 * u, 0); ctx.lineTo(5.2 * u, -1.6 * u);               /* neck */
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(6 * u, -2.4 * u, 1.6 * u, 0, TAU); ctx.stroke();   /* head */
+    ctx.beginPath(); ctx.moveTo(7.4 * u, -2.2 * u); ctx.lineTo(8.4 * u, -1.9 * u); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(5.4 * u, -3.8 * u); ctx.lineTo(5.0 * u, -4.8 * u);      /* ears */
+    ctx.moveTo(6.6 * u, -3.8 * u); ctx.lineTo(7.0 * u, -4.8 * u);
+    ctx.stroke();
+  };
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.strokeStyle = c.accent; ctx.lineWidth = 1.0 * u;
+  ctx.shadowColor = c.accent; ctx.shadowBlur = S.glow;
+  bones();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 0.32 * u;
+  bones();
+  ctx.fillStyle = "#101018"; ctx.fillRect(6.4 * u, -2.9 * u, 0.45 * u, 0.45 * u);
+  if (m.pose !== "wagD"){ ctx.fillStyle = "#ff6b9d"; ctx.fillRect(7.6 * u, -1.7 * u, 0.5 * u, 0.7 * u); }
+  ctx.restore();
+}
 
 const CREW_DEF = [
   { name:"GIEDRĖ",   accent:"#ff4fa3", skin:"#ffdbac", hair:"#ffd75e", hairStyle:"long",
@@ -619,10 +825,15 @@ function drawCrew(now){
   ctx.beginPath(); ctx.moveTo(0, floorY + 1); ctx.lineTo(W, floorY + 1); ctx.stroke();
   ctx.shadowBlur = 0;
 
+  /* Dance on a predicted beat grid: between detected beats we keep moving
+     at the estimated tempo, and every real beat re-syncs the phase. */
   const iv = bpm ? 60000 / bpm : 500;
-  const t = Math.min(1, (now - lastBeat) / iv);       // phase within current beat
-  const quiet = now - lastBeat > 2600;                // no beats → idle sway
-  const amp = 0.55 + Math.min(1.3, bass * 1.4 + pop * 0.5);
+  const el = now - lastBeat;
+  const quiet = el > 4000;                            // no beats → idle sway
+  const vb = beatCount + Math.floor(el / iv);         // virtual beat number
+  const t = (el / iv) % 1;                            // phase within beat
+  const amp = 0.6 + Math.min(1.4, bass * 1.5 + pop * 0.6);
+  const stick = S.style !== "pixel";
 
   for (let i = 0; i < n; i++){
     const c = CREW[i];
@@ -646,34 +857,47 @@ function drawCrew(now){
       ctx.save();
       ctx.translate(x, floorY);
       ctx.rotate(dir * fall * Math.PI / 2);
-      ctx.drawImage(c.frames.dead, -w / 2, -h, w, h);
+      if (stick)
+        drawStickHuman(c, { dead:true, aL1:1.5, aR1:1.5, aL2:0.1, aR2:0.1, stance:1.2 }, 0, 0, scale, now);
+      else
+        ctx.drawImage(c.frames.dead, -w / 2, -h, w, h);
       ctx.restore();
     } else {
       let m;
+      const b = vb + i;
       if (quiet){
-        m = { pose: c.dog ? "wagD" : "idle", dy: Math.sin(now / 420 + c.wob) * 1.6 };
+        m = c.dog
+          ? { pose:"wagD", dy: Math.sin(now / 420 + c.wob) * 1.6 }
+          : (stick
+              ? { dy: Math.sin(now / 420 + c.wob) * 1.6, aL1:0.35, aR1:0.35, aL2:0.25, aR2:0.25 }
+              : { pose:"idle", dy: Math.sin(now / 420 + c.wob) * 1.6 });
       } else {
-        const b = beatCount + i;
-        const set = c.dog ? DOGMOVES : MOVES;
+        const set = c.dog ? DOGMOVES : (stick ? STICKMOVES : MOVES);
         m = set[c.moves[Math.floor(b / 4) % c.moves.length]](b, t);
       }
+      m.dy = (m.dy || 0) * amp;
       const dx = (m.dx || 0) * scale * 0.5;
-      const dy = (m.dy || 0) * scale * 0.5 * amp;
-      const f = c.frames[m.pose] || fr0;
+      const dy = m.dy * scale * 0.5;
 
       /* shadow shrinks while airborne */
-      const air = Math.min(1, -dy / (h * 0.5 + 1));
+      const air = Math.min(1, Math.max(0, -dy) / (h * 0.5 + 1));
       ctx.fillStyle = "rgba(0,0,0,0.55)";
       ctx.beginPath();
       ctx.ellipse(x + dx, floorY + 3, w * 0.30 * (1 - air * 0.5), 3 + scale * 0.6, 0, 0, 7);
       ctx.fill();
 
-      ctx.save();
-      ctx.translate(x + dx, floorY - h / 2 + dy);
-      ctx.rotate(m.rot || 0);
-      ctx.scale(m.sx || 1, m.sy || 1);
-      ctx.drawImage(f, -w / 2, -h / 2, w, h);
-      ctx.restore();
+      if (stick){
+        if (c.dog) drawStickDog(c, m, x, floorY, scale, now);
+        else       drawStickHuman(c, m, x, floorY, scale, now);
+      } else {
+        const f = c.frames[m.pose] || fr0;
+        ctx.save();
+        ctx.translate(x + dx, floorY - h / 2 + dy);
+        ctx.rotate(m.rot || 0);
+        ctx.scale(m.sx || 1, m.sy || 1);
+        ctx.drawImage(f, -w / 2, -h / 2, w, h);
+        ctx.restore();
+      }
     }
 
     if (S.names){
@@ -1119,6 +1343,9 @@ bindCheck("sGrid","grid");
 bindCheck("sScan","scan", () => $("fx").classList.toggle("scan", S.scan));
 bindCheck("sDance","dancers"); bindCheck("sNames","names"); bindCheck("sSpot","spot");
 bindCheck("sCharlie","charlie");
+const styleSel = $("sStyle");
+styleSel.value = S.style;
+styleSel.onchange = () => { S.style = styleSel.value; save(); };
 bindCheck("sAuto","autoCycle");
 $("fx").classList.toggle("scan", S.scan);
 
@@ -1143,6 +1370,8 @@ addEventListener("keydown", e => {
     case "c": $("panel").classList.toggle("open"); break;
     case "h": document.body.classList.toggle("hideui"); break;
     case "d": S.dancers = !S.dancers; $("sDance").checked = S.dancers; save(); break;
+    case "s": S.style = S.style === "stick" ? "pixel" : "stick"; $("sStyle").value = S.style;
+              save(); toast("Dancers: " + (S.style === "stick" ? "stick figures" : "pixel art"), 1200); break;
     case "t": S.theme = (S.theme + 1) % THEMES.length; themeSel.value = S.theme; save();
               applyTheme(); toast("Theme: " + THEMES[S.theme].name, 1200); break;
     case "a": S.autoCycle = !S.autoCycle; $("sAuto").checked = S.autoCycle; save();

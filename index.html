@@ -128,6 +128,7 @@
   <div class="row"><span>Dancer size</span><input type="range" id="sSize" min="0.6" max="2" step="0.05"></div>
   <div class="row"><span>Name tags</span><input type="checkbox" id="sNames"></div>
   <div class="row"><span>Spotlights</span><input type="checkbox" id="sSpot"></div>
+  <div class="row"><span>Charlie &amp; sniper 🎯</span><input type="checkbox" id="sCharlie"></div>
   <h3>Behaviour</h3>
   <div class="row"><span>Auto-cycle modes</span><input type="checkbox" id="sAuto"></div>
   <button class="btn" id="bFull">⛶ Fullscreen</button>
@@ -158,7 +159,8 @@ addEventListener("resize", resize); resize();
 const DEFAULTS = {
   mode: 0, theme: 0, glow: 18, trail: 0.45, particles: 180, sens: 1.2,
   shake: true, flash: true, shock: true, grid: true, scan: true,
-  dancers: true, dancerSize: 1.1, names: true, spot: true, autoCycle: false
+  dancers: true, dancerSize: 1.1, names: true, spot: true, autoCycle: false,
+  charlie: true
 };
 let S = { ...DEFAULTS };
 try { Object.assign(S, JSON.parse(localStorage.getItem("neonpulse") || "{}")); } catch(e){}
@@ -387,6 +389,14 @@ function humanFrame(c, pose){
         px(6,16,skin); px(5,17,skin); px(5,18,skin); px(5,19,skin);
         px(9,16,skin); px(10,17,skin); px(10,18,skin); px(10,19,skin);
         rect(4,20,2,2,sh); rect(10,20,2,2,sh);
+      } else if (pose.legs === "kickL"){
+        px(5,16,skin); px(4,16,skin); px(3,17,skin); px(2,17,skin);
+        rect(0,17,2,1,sh);
+        rect(9,16,1,4,skin); rect(9,20,2,2,sh);
+      } else if (pose.legs === "kickR"){
+        px(10,16,skin); px(11,16,skin); px(12,17,skin); px(13,17,skin);
+        rect(14,17,2,1,sh);
+        rect(6,16,1,4,skin); rect(5,20,2,2,sh);
       } else {
         rect(6,16,1,4,skin); rect(9,16,1,4,skin);
         rect(5,20,2,2,sh);  rect(9,20,2,2,sh);
@@ -397,6 +407,14 @@ function humanFrame(c, pose){
         rect(5,14,2,2,pants); px(4,16,pants); px(4,17,pants); px(3,18,pants); px(3,19,pants);
         rect(9,14,2,2,pants); px(11,16,pants); px(11,17,pants); px(12,18,pants); px(12,19,pants);
         rect(2,20,3,2,sh); rect(11,20,3,2,sh);
+      } else if (pose.legs === "kickL"){
+        px(6,14,pants); px(5,15,pants); px(4,15,pants); px(3,16,pants); px(2,16,pants);
+        rect(0,15,2,2,sh);
+        rect(9,14,2,6,pants); rect(9,20,3,2,sh);
+      } else if (pose.legs === "kickR"){
+        px(9,14,pants); px(10,15,pants); px(11,15,pants); px(12,16,pants); px(13,16,pants);
+        rect(14,15,2,2,sh);
+        rect(5,14,2,6,pants); rect(4,20,3,2,sh);
       } else {
         rect(5,14 + yo,2,6 - yo,pants); rect(9,14 + yo,2,6 - yo,pants);
         rect(4,20,3,2,sh); rect(9,20,3,2,sh);
@@ -421,6 +439,10 @@ function humanFrame(c, pose){
         px(sx, 8 + yo, top); px(sx, 7 + yo, top);
         const ux = side < 0 ? 3 : 12;
         rect(ux, 4 + yo, 1, 3, top); px(ux, 3 + yo, skin);
+      } else if (kind === "hip"){
+        px(sx, 8 + yo, top);
+        px(side < 0 ? sx - 1 : sx + 1, 9 + yo, top);
+        px(sx, 10 + yo, skin);
       } else {                              // out
         if (side < 0){ rect(2, 9 + yo, 3, 1, top); px(1, 9 + yo, skin); }
         else         { rect(11, 9 + yo, 3, 1, top); px(14, 9 + yo, skin); }
@@ -430,8 +452,10 @@ function humanFrame(c, pose){
 
     /* ---- head ---- */
     rect(5, 2 + yo, 6, 6, skin);
-    px(6, 4 + yo, "#101018"); px(9, 4 + yo, "#101018");      // eyes
-    px(7, 6 + yo, "#c2576a"); px(8, 6 + yo, "#c2576a");      // smile
+    const eye = pose.dead ? "#ff4455" : "#101018";
+    px(6, 4 + yo, eye); px(9, 4 + yo, eye);                  // eyes (red when hit)
+    const mouth = pose.dead ? "#667" : "#c2576a";
+    px(7, 6 + yo, mouth); px(8, 6 + yo, mouth);              // smile
 
     /* ---- hair ---- */
     const hs = c.hairStyle;
@@ -489,12 +513,19 @@ function dogFrame(c, pose){
 }
 
 const POSES = {
-  idle:{ la:"down", ra:"down", legs:"stand", crouch:false },
-  L:   { la:"up",   ra:"down", legs:"apart", crouch:false },
-  R:   { la:"down", ra:"up",   legs:"apart", crouch:false },
-  U:   { la:"up",   ra:"up",   legs:"stand", crouch:false },
-  X:   { la:"out",  ra:"out",  legs:"apart", crouch:false },
-  C:   { la:"out",  ra:"out",  legs:"stand", crouch:true  }
+  idle:{ la:"down", ra:"down", legs:"stand" },
+  L:   { la:"up",   ra:"down", legs:"apart" },
+  R:   { la:"down", ra:"up",   legs:"apart" },
+  U:   { la:"up",   ra:"up",   legs:"stand" },
+  UC:  { la:"up",   ra:"up",   legs:"apart" },
+  X:   { la:"out",  ra:"out",  legs:"apart" },
+  C:   { la:"out",  ra:"out",  legs:"stand", crouch:true },
+  H:   { la:"hip",  ra:"hip",  legs:"stand" },
+  W:   { la:"up",   ra:"out",  legs:"apart" },
+  V:   { la:"out",  ra:"up",   legs:"apart" },
+  KL:  { la:"out",  ra:"up",   legs:"kickL" },
+  KR:  { la:"up",   ra:"out",  legs:"kickR" },
+  dead:{ la:"out",  ra:"out",  legs:"stand", dead:true }
 };
 const DOGPOSES = {
   wagU:{ tail:"up",   jump:false, tongue:true  },
@@ -502,28 +533,64 @@ const DOGPOSES = {
   jump:{ tail:"up",   jump:true,  tongue:true  }
 };
 
+/* ---- dance move engine ----
+   A move is f(b, t) where b = beat number, t = phase 0..1 inside the current
+   beat. It returns {pose, dx, dy, rot, sx, sy} (dx/dy in sprite-grid pixels).
+   Each move runs for a 4-beat bar, then the routine advances. */
+const BNC = t => Math.sin(Math.PI * t);
+const MOVES = {
+  pump(b,t){ return { pose: b%2 ? "R" : "L", dy: -12*BNC(t), rot:(b%2?1:-1)*0.07 }; },
+  jump(b,t){ return b%2 ? { pose:"UC", dy:-26*BNC(t), sy:1+0.12*BNC(t) }
+                        : { pose:"C",  dy:-4*BNC(t),  sy:0.95 }; },
+  spin(b,t){ return b%4===3 ? { pose:"X", rot:t*Math.PI*2, dy:-20*BNC(t) }
+                            : MOVES.pump(b,t); },
+  kick(b,t){ return { pose: b%2 ? "KR" : "KL", dy:-8*BNC(t), rot:(b%2?-1:1)*0.06 }; },
+  sway(b,t){ const p=(b+t)*Math.PI;
+             return { pose:"H", dx:Math.sin(p)*9, rot:Math.sin(p)*0.13, dy:-5*BNC(t) }; },
+  wave(b,t){ return { pose:["W","X","V","U"][b%4], dy:-10*BNC(t),
+                      rot:Math.sin((b+t)*Math.PI)*0.08 }; },
+  headbang(b,t){ return { pose:"H", rot:0.28*BNC(t)*(b%2?1:-1), dy:-4*BNC(t) }; },
+  shuffle(b,t){ return { pose:"X", dx:Math.sin(t*Math.PI*4)*7*(b%2?1:-1), dy:-6*BNC(t) }; },
+  disco(b,t){ return { pose:b%2?"R":"L", dy:-10*BNC(t), rot:(b%2?1:-1)*(0.05+0.1*t) }; }
+};
+const DOGMOVES = {
+  wag(b,t){ return { pose:b%2?"wagD":"wagU", dy:-10*BNC(t) }; },
+  bigjump(b,t){ return b%2 ? { pose:"jump", dy:-26*BNC(t) }
+                           : { pose:"wagD", dy:-6*BNC(t) }; },
+  spin(b,t){ return b%4===3 ? { pose:"jump", rot:t*Math.PI*2, dy:-22*BNC(t) }
+                            : DOGMOVES.wag(b,t); },
+  zoom(b,t){ return { pose:(t*4|0)%2?"wagU":"wagD",
+                      dx:Math.sin((b+t)*Math.PI/2)*26, dy:-6*Math.abs(Math.sin(Math.PI*t*2)) }; }
+};
+
 const CREW_DEF = [
   { name:"GIEDRĖ",   accent:"#ff4fa3", skin:"#ffdbac", hair:"#ffd75e", hairStyle:"long",
-    top:"#ff2e88", dress:true,  shoe:"#ffffff", seq:["L","R","L","R","U","C","U","C"] },
+    top:"#ff2e88", dress:true,  shoe:"#ffffff", moves:["pump","wave","spin","sway"] },
   { name:"MARTYNAS", accent:"#ff8c00", skin:"#f1c27d", hair:"#3b2a1a", hairStyle:"spiky",
-    top:"#ff8c00", bottom:"#23304a", dress:false, shoe:"#dddddd", seq:["R","C","L","C","U","U","X","C"] },
+    top:"#ff8c00", bottom:"#23304a", dress:false, shoe:"#dddddd", moves:["jump","shuffle","pump","headbang"] },
   { name:"AGNĖ",     accent:"#00e5ff", skin:"#ffe0bd", hair:"#8a5a2b", hairStyle:"ponytail",
-    top:"#00b8d4", dress:true,  shoe:"#222a3a", seq:["U","C","L","C","U","C","R","C"] },
+    top:"#00b8d4", dress:true,  shoe:"#222a3a", moves:["sway","kick","wave","pump"] },
   { name:"AUGUSTAS", accent:"#3b82f6", skin:"#ffdbac", hair:"#e8c66a", hairStyle:"short",
-    top:"#3b82f6", bottom:"#1d2436", dress:false, shoe:"#cccccc", seq:["X","U","X","C","L","R","L","R"] },
+    top:"#3b82f6", bottom:"#1d2436", dress:false, shoe:"#cccccc", moves:["shuffle","spin","disco","jump"] },
   { name:"KAROLINA", accent:"#a855f7", skin:"#f1c27d", hair:"#241e2e", hairStyle:"long",
-    top:"#a855f7", dress:true,  shoe:"#eeeeee", seq:["R","L","R","L","C","U","C","U"] },
+    top:"#a855f7", dress:true,  shoe:"#eeeeee", moves:["wave","sway","pump","kick"] },
   { name:"ARTIS",    accent:"#ffb86b", dog:true, fur:"#c98c4a", dark:"#8a5a2b", collar:"#ff2e4a",
-    seq:["wagU","wagD","wagU","wagD","wagU","wagD","jump","jump"] },
+    moves:["wag","bigjump","spin","zoom"] },
   { name:"IGNAS",    accent:"#ef4444", skin:"#ffe0bd", hair:"#2b2b2b", hairStyle:"cap", cap:"#ef4444",
-    top:"#e5e7eb", bottom:"#2b3346", dress:false, shoe:"#ef4444", seq:["L","L","R","R","U","X","U","X"] },
+    top:"#e5e7eb", bottom:"#2b3346", dress:false, shoe:"#ef4444", moves:["headbang","jump","shuffle","spin"] },
   { name:"EMILIJA",  accent:"#a3e635", skin:"#ffdbac", hair:"#d2491e", hairStyle:"curly",
-    top:"#84cc16", dress:true,  shoe:"#ffffff", seq:["C","U","C","U","L","R","X","X"] },
+    top:"#84cc16", dress:true,  shoe:"#ffffff", moves:["kick","pump","sway","wave"] },
   { name:"DOVYDAS",  accent:"#22c55e", skin:"#e0ac69", hair:"#1c1c1c", hairStyle:"buzz",
-    top:"#22c55e", bottom:"#202a3c", dress:false, shoe:"#111111", seq:["U","C","X","C","R","C","L","C"] },
+    top:"#22c55e", bottom:"#202a3c", dress:false, shoe:"#111111", moves:["disco","headbang","jump","shuffle"] },
   { name:"PAULIUS",  accent:"#facc15", skin:"#ffdbac", hair:"#5b4226", hairStyle:"messy",
-    top:"#facc15", bottom:"#16202e", dress:false, shoe:"#facc15", seq:["X","C","U","C","X","C","U","U"] }
+    top:"#facc15", bottom:"#16202e", dress:false, shoe:"#facc15", moves:["spin","disco","wave","jump"] }
 ];
+
+/* Charlie joins the lineup at a random spot every load — and gets sniped. */
+CREW_DEF.splice(Math.floor(Math.random() * (CREW_DEF.length + 1)), 0,
+  { name:"CHARLIE", accent:"#ff6b35", charlie:true, skin:"#ffdbac", hair:"#222222",
+    hairStyle:"cap", cap:"#3f4a2f", top:"#4a5d3a", bottom:"#33401f", dress:false,
+    shoe:"#2a2a2a", moves:["pump","jump","sway","shuffle"] });
 
 const CREW = CREW_DEF.map((c, i) => {
   const frames = {};
@@ -532,12 +599,16 @@ const CREW = CREW_DEF.map((c, i) => {
   return { ...c, frames, i, wob: Math.random() * Math.PI * 2 };
 });
 
+function crewMetrics(){
+  const scale = Math.max(3, Math.round((W / 320) * S.dancerSize));
+  return { scale, floorY: H - 26 - scale * 2 };
+}
+
 function drawCrew(now){
   if (!S.dancers) return;
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  const scale = Math.max(3, Math.round((W / 320) * S.dancerSize));
-  const floorY = H - 26 - scale * 2;
+  const { scale, floorY } = crewMetrics();
   const n = CREW.length;
 
   /* neon stage line */
@@ -548,15 +619,16 @@ function drawCrew(now){
   ctx.beginPath(); ctx.moveTo(0, floorY + 1); ctx.lineTo(W, floorY + 1); ctx.stroke();
   ctx.shadowBlur = 0;
 
+  const iv = bpm ? 60000 / bpm : 500;
+  const t = Math.min(1, (now - lastBeat) / iv);       // phase within current beat
+  const quiet = now - lastBeat > 2600;                // no beats → idle sway
+  const amp = 0.55 + Math.min(1.3, bass * 1.4 + pop * 0.5);
+
   for (let i = 0; i < n; i++){
     const c = CREW[i];
     const x = W * (i + 0.5) / n;
-    const groove = Math.sin(now / 280 + c.wob) * 2;
-    const bounce = pop * (14 + bass * 26) * (c.dog ? 1.5 : 1) * (S.dancerSize);
-    const y = floorY - bounce + groove;
-    const key = c.seq[(beatCount + i) % c.seq.length];
-    const f = c.frames[key] || c.frames[Object.keys(c.frames)[0]];
-    const w = f.width * scale, h = f.height * scale;
+    const fr0 = c.frames[Object.keys(c.frames)[0]];
+    const w = fr0.width * scale, h = fr0.height * scale;
 
     /* spotlight pool */
     if (S.spot){
@@ -566,13 +638,43 @@ function drawCrew(now){
       ctx.fillStyle = g;
       ctx.fillRect(x - w, floorY - w * 0.4, w * 2, w * 0.9);
     }
-    /* shadow */
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.beginPath();
-    ctx.ellipse(x, floorY + 3, w * 0.30 * (1 - pop * 0.3), 3 + scale * 0.6, 0, 0, 7);
-    ctx.fill();
 
-    ctx.drawImage(f, Math.round(x - w / 2), Math.round(y - h), w, h);
+    if (c.charlie && charlie.dead){
+      /* Charlie down: topple around the feet, lie on the stage */
+      const fall = Math.min(1, (now - charlie.deadAt) / 420);
+      const dir = sniper.side < 0 ? 1 : -1;
+      ctx.save();
+      ctx.translate(x, floorY);
+      ctx.rotate(dir * fall * Math.PI / 2);
+      ctx.drawImage(c.frames.dead, -w / 2, -h, w, h);
+      ctx.restore();
+    } else {
+      let m;
+      if (quiet){
+        m = { pose: c.dog ? "wagD" : "idle", dy: Math.sin(now / 420 + c.wob) * 1.6 };
+      } else {
+        const b = beatCount + i;
+        const set = c.dog ? DOGMOVES : MOVES;
+        m = set[c.moves[Math.floor(b / 4) % c.moves.length]](b, t);
+      }
+      const dx = (m.dx || 0) * scale * 0.5;
+      const dy = (m.dy || 0) * scale * 0.5 * amp;
+      const f = c.frames[m.pose] || fr0;
+
+      /* shadow shrinks while airborne */
+      const air = Math.min(1, -dy / (h * 0.5 + 1));
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.ellipse(x + dx, floorY + 3, w * 0.30 * (1 - air * 0.5), 3 + scale * 0.6, 0, 0, 7);
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(x + dx, floorY - h / 2 + dy);
+      ctx.rotate(m.rot || 0);
+      ctx.scale(m.sx || 1, m.sy || 1);
+      ctx.drawImage(f, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
 
     if (S.names){
       ctx.font = `bold ${Math.max(10, scale * 3.2)}px monospace`;
@@ -580,7 +682,8 @@ function drawCrew(now){
       ctx.fillStyle = c.accent;
       ctx.shadowColor = c.accent;
       ctx.shadowBlur = 8;
-      ctx.fillText(c.name, x, floorY + 16 + scale);
+      const tag = c.charlie && charlie.kills ? `${c.name} ☠×${charlie.kills}` : c.name;
+      ctx.fillText(tag, x, floorY + 16 + scale);
       ctx.shadowBlur = 0;
     }
   }
@@ -589,6 +692,134 @@ function drawCrew(now){
 function hexA(hex, a){
   const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${a})`;
+}
+
+/* ===================================================================
+   CHARLIE & THE SNIPER  (airsoft lore: every ~30 s, Charlie goes down)
+   =================================================================== */
+const CHARLIE_I = CREW.findIndex(c => c.charlie);
+const charlie = { dead: false, deadAt: 0, kills: 0 };
+const sniper = { state: "hidden", until: performance.now() + 30000, t0: 0, side: 1, x: 0, y: 0 };
+
+const SNIPER_SPR = makeFrame(22, 10, (px, rect) => {
+  rect(1, 7, 9, 2, "#39422e");                                /* prone body */
+  px(0, 8, "#2a3122"); px(2, 6, "#39422e");
+  rect(9, 4, 3, 3, "#e0b48c");                                /* head */
+  rect(8, 3, 5, 1, "#2c3624");                                /* boonie hat */
+  px(11, 5, "#101018");                                       /* eye on glass */
+  rect(10, 6, 11, 1, "#23282e");                              /* rifle */
+  rect(13, 4, 3, 1, "#11161c");                               /* scope */
+  px(21, 6, "#0e1014");                                       /* muzzle */
+  rect(12, 8, 1, 2, "#23282e"); rect(17, 8, 1, 2, "#23282e"); /* bipod */
+});
+
+const floaters = [];
+function floatText(x, y, txt, color){ floaters.push({ x, y, txt, color, life: 1 }); }
+function drawFloaters(dt){
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "bold 22px monospace";
+  for (let i = floaters.length - 1; i >= 0; i--){
+    const f = floaters[i];
+    f.y -= 0.7 * dt; f.life -= 0.012 * dt;
+    if (f.life <= 0){ floaters.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, f.life);
+    ctx.fillStyle = f.color;
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 12;
+    ctx.fillText(f.txt, f.x, f.y);
+  }
+  ctx.restore();
+}
+
+function sniperScale(){ return Math.max(2, Math.round(W / 480)); }
+function muzzlePos(){
+  const s = sniperScale();
+  return { x: sniper.x - sniper.side * 10 * s, y: sniper.y + s };
+}
+function drawSniper(){
+  const s = sniperScale();
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(sniper.x, sniper.y);
+  if (sniper.side > 0) ctx.scale(-1, 1);        /* face left from the right edge */
+  ctx.drawImage(SNIPER_SPR, -11 * s, -5 * s, 22 * s, 10 * s);
+  ctx.restore();
+}
+
+function sniperScene(now){
+  if (!S.charlie || !S.dancers || CHARLIE_I < 0){
+    sniper.state = "hidden"; charlie.dead = false;
+    sniper.until = Math.max(sniper.until, now + 5000);
+    return;
+  }
+  const { scale, floorY } = crewMetrics();
+  const cx = W * (CHARLIE_I + 0.5) / CREW.length;
+  const cy = floorY - 12 * scale;               /* chest height */
+
+  if (charlie.dead && now - charlie.deadAt > 3800){
+    charlie.dead = false;
+    shocks.push({ r: 8, a: 0.6 });
+    floatText(cx, floorY - 16 * scale, "RESPAWNED", "#7cfc00");
+  }
+
+  switch (sniper.state){
+    case "hidden":
+      if (now > sniper.until && !charlie.dead){
+        sniper.state = "aim"; sniper.t0 = now;
+        sniper.side = Math.random() < 0.5 ? -1 : 1;
+        sniper.x = sniper.side < 0 ? 26 : W - 26;
+        sniper.y = H * (0.10 + Math.random() * 0.32);
+      }
+      break;
+    case "aim": {
+      drawSniper();
+      const k = (now - sniper.t0) / 1700;       /* laser steadies as he settles */
+      const m = muzzlePos();
+      const wob = Math.sin(now / 47) * 14 * (1 - k);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,40,60,${0.25 + 0.35 * k})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 8]);
+      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(cx + wob, cy + wob * 0.4); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,40,60,0.9)";
+      ctx.beginPath(); ctx.arc(cx + wob, cy + wob * 0.4, 3, 0, 7); ctx.fill();
+      ctx.restore();
+      if (k >= 1){
+        sniper.state = "shot"; sniper.t0 = now;
+        charlie.dead = true; charlie.deadAt = now; charlie.kills++;
+        pop = Math.max(pop, 0.85);
+        floatText(cx, cy - 30, "HIT! 🎯", "#ff6b35");
+        for (let j = 0; j < 26; j++){           /* BB impact sparks */
+          const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 6;
+          parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1,
+            life: 0.7, sz: 1 + Math.random() * 2.5, p: 0.08 });
+        }
+      }
+      break; }
+    case "shot": {
+      drawSniper();
+      const m = muzzlePos();
+      const k = (now - sniper.t0) / 230;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `rgba(255,170,60,${Math.max(0, 1 - k)})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(cx, cy); ctx.stroke();
+      ctx.fillStyle = `rgba(255,220,120,${Math.max(0, 1 - k)})`;
+      ctx.beginPath(); ctx.arc(m.x, m.y, 8 * Math.max(0, 1 - k) + 2, 0, 7); ctx.fill();
+      ctx.restore();
+      if (k >= 1){ sniper.state = "linger"; sniper.t0 = now; }
+      break; }
+    case "linger":
+      drawSniper();
+      if (now - sniper.t0 > 900){
+        sniper.state = "hidden";
+        sniper.until = now + 30000 * (0.85 + 0.3 * Math.random());
+      }
+      break;
+  }
 }
 
 /* ===================================================================
@@ -831,6 +1062,8 @@ function loop(now){
   }
 
   drawCrew(now);
+  sniperScene(now);
+  drawFloaters(dt);
   ctx.restore();
 
   /* beat flash */
@@ -885,6 +1118,7 @@ bindCheck("sShake","shake"); bindCheck("sFlash","flash"); bindCheck("sWave","sho
 bindCheck("sGrid","grid");
 bindCheck("sScan","scan", () => $("fx").classList.toggle("scan", S.scan));
 bindCheck("sDance","dancers"); bindCheck("sNames","names"); bindCheck("sSpot","spot");
+bindCheck("sCharlie","charlie");
 bindCheck("sAuto","autoCycle");
 $("fx").classList.toggle("scan", S.scan);
 
